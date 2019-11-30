@@ -1,6 +1,6 @@
 //! Provides all functionality
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
 use std::fs;
 use std::fs::File;
@@ -29,7 +29,7 @@ pub fn perform(config: Config) {
 
 /// Print report about all unused dependencies.
 fn show_unused(report: PathBuf) {
-    let unused = get_unused(report);
+    let unused = select(report, "unused");
     let modules = unused.len();
     let unused_amount: usize = unused.values().map(Vec::len).sum();
     println!(
@@ -40,10 +40,10 @@ fn show_unused(report: PathBuf) {
 
 /// Removes all unused dependencies from all corresponded BUILD files.
 fn fix_unused(report: PathBuf) {
-    let unused = get_unused(report);
+    let unused = select(report, "unused");
     for (module, deps) in unused {
         let removed = remove_deps(&module, deps)
-            .expect(&format!("Couldn't remove unused for module: {}", module));
+            .unwrap_or_else(|_| panic!("Couldn't remove unused for module: {}", module));
         println!("{} removed: {}", module, removed)
     }
 }
@@ -53,7 +53,7 @@ fn address_to_folder(address: &str) -> String {
     if address.contains("3rdparty") {
         address.to_owned()
     } else {
-        address.split(":").collect::<Vec<_>>()[0].to_string()
+        address.split(':').collect::<Vec<_>>()[0].to_string()
     }
 }
 
@@ -63,16 +63,16 @@ fn remove_deps(folder: &str, deps: Vec<String>) -> Result<usize, Box<dyn Error>>
     for entry in fs::read_dir(folder)? {
         let entry = entry?;
         if entry.file_name() == "BUILD" {
-
             // read and filter unused dependencies
             let cleaned = {
                 let file = BufReader::new(File::open(entry.path())?);
 
                 file.lines()
                     .filter_map(|line| {
-                        let line =
-                            line.expect(&format!("Couldn't read line for {}/BUILD ", folder));
-                        if let Some(_) = deps.iter().find(|target| line.contains(*target)) {
+                        let line = line
+                            .unwrap_or_else(|_| panic!("Couldn't read line for {}/BUILD ", folder));
+
+                        if deps.iter().any(|target| line.contains(target)) {
                             // if line contents unused dep remove it from result
                             counter += 1;
                             None
@@ -95,8 +95,22 @@ fn remove_deps(folder: &str, deps: Vec<String>) -> Result<usize, Box<dyn Error>>
     Ok(counter)
 }
 
-/// Aggregates modules and their unused dependencies.
-fn get_unused(report: PathBuf) -> BTreeMap<String, Vec<String>> {
+fn show_undeclared(report: PathBuf) {
+    let unused = select(report, "undeclared");
+    let modules = unused.len();
+    let unused_amount: usize = unused.values().map(Vec::len).sum();
+    println!(
+        "{:#?}\n modules affected: {}, total dependencies undeclared: {}",
+        &unused, modules, unused_amount
+    );
+}
+
+fn fix_undeclared(_report: PathBuf) {
+    unimplemented!("Not implemented will appear in new releases")
+}
+
+/// Aggregates modules and their dependencies with specified type.
+fn select(report: PathBuf, dependency_type: &str) -> BTreeMap<String, Vec<String>> {
     let json = read_report::<HashMap<String, Info>>(report).expect("Couldn't read as json");
     json.into_iter()
         .filter_map(|(module, info)| {
@@ -107,7 +121,7 @@ fn get_unused(report: PathBuf) -> BTreeMap<String, Vec<String>> {
                     .dependencies
                     .iter()
                     .filter_map(|dep| {
-                        if dep.dependency_type == "unused" {
+                        if dep.dependency_type == dependency_type {
                             Some(address_to_folder(&dep.target))
                         } else {
                             None
@@ -123,14 +137,6 @@ fn get_unused(report: PathBuf) -> BTreeMap<String, Vec<String>> {
             }
         })
         .collect()
-}
-
-fn show_undeclared(_report: PathBuf) {
-    unimplemented!("Not implemented will appear in new releases")
-}
-
-fn fix_undeclared(_report: PathBuf) {
-    unimplemented!("Not implemented will appear in new releases")
 }
 
 #[derive(Deserialize, Debug)]
