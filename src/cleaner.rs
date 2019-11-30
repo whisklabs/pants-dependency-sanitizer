@@ -1,8 +1,10 @@
 //! Provides all functionality
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::error::Error;
+use std::fs;
 use std::fs::File;
-use std::io::BufReader;
+use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
@@ -37,8 +39,60 @@ fn show_unused(report: PathBuf) {
 }
 
 /// Removes all unused dependencies from all corresponded BUILD files.
-fn fix_unused(_report: PathBuf) {
-    unimplemented!()
+fn fix_unused(report: PathBuf) {
+    let unused = get_unused(report);
+    for (module, deps) in unused {
+        let removed = remove_deps(&module, deps)
+            .expect(&format!("Couldn't remove unused for module: {}", module));
+        println!("{} removed: {}", module, removed)
+    }
+}
+
+/// Removes from the Pants Address target name, leaves only directory.
+fn address_to_folder(address: &str) -> String {
+    if address.contains("3rdparty") {
+        address.to_owned()
+    } else {
+        address.split(":").collect::<Vec<_>>()[0].to_string()
+    }
+}
+
+/// Finds BUILD file and removes lines with unused dependencies, returns number of removed lines.
+fn remove_deps(folder: &str, deps: Vec<String>) -> Result<usize, Box<dyn Error>> {
+    let mut counter = 0;
+    for entry in fs::read_dir(folder)? {
+        let entry = entry?;
+        if entry.file_name() == "BUILD" {
+
+            // read and filter unused dependencies
+            let cleaned = {
+                let file = BufReader::new(File::open(entry.path())?);
+
+                file.lines()
+                    .filter_map(|line| {
+                        let line =
+                            line.expect(&format!("Couldn't read line for {}/BUILD ", folder));
+                        if let Some(_) = deps.iter().find(|target| line.contains(*target)) {
+                            // if line contents unused dep remove it from result
+                            counter += 1;
+                            None
+                        } else {
+                            Some(line)
+                        }
+                    })
+                    .collect::<Vec<String>>()
+            };
+
+            // write filtered dependencies back in BUILD file
+            let mut file = BufWriter::new(File::create(entry.path())?);
+            for line in cleaned {
+                writeln!(file, "{}", line)?;
+            }
+            file.flush()?;
+            break;
+        }
+    }
+    Ok(counter)
 }
 
 /// Aggregates modules and their unused dependencies.
@@ -46,33 +100,37 @@ fn get_unused(report: PathBuf) -> BTreeMap<String, Vec<String>> {
     let json = read_report::<HashMap<String, Info>>(report).expect("Couldn't read as json");
     json.into_iter()
         .filter_map(|(module, info)| {
-            let unused_deps = info
-                .dependencies
-                .iter()
-                .filter_map(|dep| {
-                    if dep.dependency_type == "unused" {
-                        Some(dep.target.to_owned())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>();
-
-            if unused_deps.is_empty() {
+            if module.contains("3rdparty") {
                 None
             } else {
-                Some((module, unused_deps))
+                let unused_deps = info
+                    .dependencies
+                    .iter()
+                    .filter_map(|dep| {
+                        if dep.dependency_type == "unused" {
+                            Some(address_to_folder(&dep.target))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                if unused_deps.is_empty() {
+                    None
+                } else {
+                    Some((address_to_folder(&module), unused_deps))
+                }
             }
         })
         .collect()
 }
 
 fn show_undeclared(_report: PathBuf) {
-    unimplemented!()
+    unimplemented!("Not implemented will appear in new releases")
 }
 
 fn fix_undeclared(_report: PathBuf) {
-    unimplemented!()
+    unimplemented!("Not implemented will appear in new releases")
 }
 
 #[derive(Deserialize, Debug)]
