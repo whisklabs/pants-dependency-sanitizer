@@ -34,8 +34,9 @@ impl Address {
 
     /// Line corresponds to this address.
     pub fn match_line(&self, line: &str) -> bool {
-        (self.is_simple() && line.contains(&self.folder))
-            || line.contains(&format!("\":{}\"", self.module_name))
+        line.contains(&format!("'{}:{}'", self.folder, self.module_name))       // full address
+        || (self.is_simple() && line.contains(&format!("'{}'", &self.folder)))  // only folder
+        || line.contains(&format!("':{}'", self.module_name))                   // only module name
     }
 
     pub fn as_str(&self) -> String {
@@ -77,7 +78,7 @@ pub fn remove_deps(module: &Address, deps: Vec<Address>) -> Result<usize, Box<dy
                             inside_module_section = true;
                         }
 
-                        if inside_module_section && line.contains("dependencies=[") {
+                        if inside_module_section && line.contains("dependencies") {
                             inside_module_dep_section = true;
                         }
 
@@ -146,7 +147,7 @@ fn add_deps_to_file(
 
     let deps_iter = deps
         .into_iter()
-        .map(|dep| format!("        \"{}\",", dep.as_str()));
+        .map(|dep| format!("        '{}',", dep.as_str()));
 
     let mut result: Vec<String> = Vec::new();
     // we use BTreeSet because deps should be sorted and unique
@@ -177,14 +178,14 @@ fn add_deps_to_file(
         if inside_module_dep_section {
             // we are into dep block just add new line into deps set
             if line.ends_with(',') {
-                updated_deps.insert(line);
+                updated_deps.insert(line.replace('"', "'"));
             } else if !line.is_empty() {
-                updated_deps.insert(line.to_owned() + ",");
-            }
+                updated_deps.insert(line.replace('"', "'") + ",");
+            };
             continue;
         }
 
-        if inside_module_section && line.contains("dependencies=[") {
+        if inside_module_section && line.contains("dependencies") {
             inside_module_dep_section = true;
             result.push(line);
             continue;

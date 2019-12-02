@@ -1,5 +1,5 @@
 
-# Tool for cleaning Pants dependencies.
+# Tool for sanitize Pants dependencies.
 
 This tool works with a report from the followed command (run from the root folder of an inspected project):
 
@@ -15,39 +15,39 @@ Binary (cargo required - [how to install rust](https://www.rust-lang.org/tools/i
     
 Docker (docker required)(may take a few minutes)
 
-    docker build -t pants-cleaner .
+    docker build -t dep-sanitizer.
     
     
 ## How to use
 
-Run this tool from the root of your project. If report file from isn't in a 
+Run this tool from the root of your Pants project. If report file from isn't in a 
 project root, specified report file via `--report_file` e.g.
 
-    pants-cleaner --report_file=/tmp/deps.json unused show 
+    dep-sanitizer --report_file=/tmp/deps.json unused show 
 
 For getting help
 
-    pants-cleaner help    
+    dep-sanitizer help    
     
 For showing all unused dependencies
 
-    pants-cleaner unused show 
+    dep-sanitizer unused show 
     
 For remove all unused dependencies
 
-    pants-cleaner unused fix
+    dep-sanitizer unused fix
     
 For showing all undeclared but used transitively modules dependencies
 
-    pants-cleaner undeclared show 
+    dep-sanitizer undeclared show 
     
 For adding all undeclared dependencies to corresponded BUILD files
 
-    pants-cleaner undeclared fix
+    dep-sanitizer undeclared fix
     
 Use with docker 
 
-    docker run -v ${PWD}/../atlas:/project/ pants-cleaner unused show 
+    docker run -v ${PWD}/../atlas:/project/ dep-sanitizer unused show 
   
 Note that, we mount 'atlas' project into container as 'project' folder. This folder 
 should contain 'deps.json' file as well.   

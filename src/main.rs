@@ -4,7 +4,7 @@ extern crate serde_derive;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-mod cleaner;
+mod sanitizer;
 
 #[derive(StructOpt, Debug)]
 #[structopt(
@@ -60,5 +60,5 @@ pub enum UndeclaredSubCommand {
 
 fn main() {
     let config: Config = dbg!(Config::from_args());
-    cleaner::perform(config);
+    sanitizer::perform(config);
 }

@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use serde::export::fmt::Debug;
 use serde_json;
 
-use crate::cleaner::deps_manager::{add_deps, remove_deps, Address};
+use crate::sanitizer::deps_manager::{add_deps, remove_deps, Address};
 use crate::Command::{Undeclared, Unused};
 use crate::{Config, UndeclaredSubCommand, UnusedSubCommand};
 
