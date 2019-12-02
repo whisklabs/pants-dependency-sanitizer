@@ -9,7 +9,7 @@ use serde::de::DeserializeOwned;
 use serde::export::fmt::Debug;
 use serde_json;
 
-use crate::cleaner::deps_manager::{remove_deps, Address};
+use crate::cleaner::deps_manager::{add_deps, remove_deps, Address};
 use crate::Command::{Undeclared, Unused};
 use crate::{Config, UndeclaredSubCommand, UnusedSubCommand};
 
@@ -63,7 +63,12 @@ fn show_undeclared(report: PathBuf) {
 
 /// Add to corresponded BUILD files all undeclared but used transitively dependencies
 fn fix_undeclared(report: PathBuf) {
-    unimplemented!()
+    let undeclared = select(report, "undeclared");
+    for (module, deps) in undeclared {
+        let added = add_deps(&module, deps)
+            .unwrap_or_else(|_| panic!("Couldn't add undeclared deps to the module: {:?}", module));
+        println!("{:?} added: {}", module, added)
+    }
 }
 
 /// Aggregates modules and their dependencies with specified type.
