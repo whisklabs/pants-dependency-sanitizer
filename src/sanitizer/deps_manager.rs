@@ -36,7 +36,7 @@ impl Address {
     pub fn match_line(&self, line: &str) -> bool {
         line.contains(&format!("'{}:{}'", self.folder, self.module_name))       // full address
         || (self.is_simple() && line.contains(&format!("'{}'", &self.folder)))  // only folder
-        || line.contains(&format!("':{}'", self.module_name))                   // only module name
+        || line.contains(&format!("':{}'", self.module_name)) // only module name
     }
 
     pub fn as_str(&self) -> String {

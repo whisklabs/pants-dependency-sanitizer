@@ -19,19 +19,19 @@ mod deps_manager;
 pub fn perform(config: Config) {
     match config.cmd {
         Unused { cmd } => match cmd {
-            UnusedSubCommand::Show => show_unused(config.report_file),
-            UnusedSubCommand::Fix => fix_unused(config.report_file),
+            UnusedSubCommand::Show => show_unused(config.report_file, config.prefix),
+            UnusedSubCommand::Fix => fix_unused(config.report_file, config.prefix),
         },
         Undeclared { cmd } => match cmd {
-            UndeclaredSubCommand::Show => show_undeclared(config.report_file),
-            UndeclaredSubCommand::Fix => fix_undeclared(config.report_file),
+            UndeclaredSubCommand::Show => show_undeclared(config.report_file, config.prefix),
+            UndeclaredSubCommand::Fix => fix_undeclared(config.report_file, config.prefix),
         },
     }
 }
 
 /// Print report about all unused dependencies.
-fn show_unused(report: PathBuf) {
-    let unused = select(report, "unused");
+fn show_unused(report: PathBuf, prefix: String) {
+    let unused = select(report, "unused", prefix);
     let modules = unused.len();
     let unused_amount: usize = unused.values().map(Vec::len).sum();
     println!(
@@ -41,8 +41,8 @@ fn show_unused(report: PathBuf) {
 }
 
 /// Removes all unused dependencies from all corresponded BUILD files.
-fn fix_unused(report: PathBuf) {
-    let unused = select(report, "unused");
+fn fix_unused(report: PathBuf, prefix: String) {
+    let unused = select(report, "unused", prefix);
     for (module, deps) in unused {
         let removed = remove_deps(&module, deps)
             .unwrap_or_else(|_| panic!("Couldn't remove unused for module: {:?}", module));
@@ -51,8 +51,8 @@ fn fix_unused(report: PathBuf) {
 }
 
 /// Print report about all undeclared dependencies.
-fn show_undeclared(report: PathBuf) {
-    let undeclared = select(report, "undeclared");
+fn show_undeclared(report: PathBuf, prefix: String) {
+    let undeclared = select(report, "undeclared", prefix);
     let modules = undeclared.len();
     let undeclared_amount: usize = undeclared.values().map(Vec::len).sum();
     println!(
@@ -62,8 +62,8 @@ fn show_undeclared(report: PathBuf) {
 }
 
 /// Add to corresponded BUILD files all undeclared but used transitively dependencies
-fn fix_undeclared(report: PathBuf) {
-    let undeclared = select(report, "undeclared");
+fn fix_undeclared(report: PathBuf, prefix: String) {
+    let undeclared = select(report, "undeclared", prefix);
     for (module, deps) in undeclared {
         let added = add_deps(&module, deps)
             .unwrap_or_else(|_| panic!("Couldn't add undeclared deps to the module: {:?}", module));
@@ -72,12 +72,16 @@ fn fix_undeclared(report: PathBuf) {
 }
 
 /// Aggregates modules and their dependencies with specified type.
-fn select(report: PathBuf, dependency_type: &str) -> BTreeMap<Address, Vec<Address>> {
+fn select(
+    report: PathBuf,
+    dependency_type: &str,
+    prefix: String,
+) -> BTreeMap<Address, Vec<Address>> {
     let json = read_report::<HashMap<String, Info>>(report).expect("Couldn't read as json");
     json.into_iter()
         .filter_map(|(module, info)| {
-            if module.contains("3rdparty") {
-                // don't care about unused deps in 3rdparty
+            if module.contains("3rdparty") || !module.starts_with(&prefix) {
+                // don't care about unused deps in 3rdparty and  modules that aren't matched a prefix
                 None
             } else {
                 let unused_deps = info

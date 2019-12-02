@@ -18,6 +18,11 @@ pub struct Config {
     /// and provide full path to this file.
     #[structopt(short, long, parse(from_os_str), default_value = "deps.json")]
     report_file: PathBuf,
+
+    /// Applies any action only for modules that start with this include_prefix.
+    #[structopt(short, long, default_value = "src/scala/")]
+    prefix: String,
+
     #[structopt(subcommand)]
     cmd: Command,
 }

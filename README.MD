@@ -20,8 +20,8 @@ Docker (docker required)(may take a few minutes)
     
 ## How to use
 
-Run this tool from the root of your Pants project. If report file from isn't in a 
-project root, specified report file via `--report_file` e.g.
+Run this tool from the root of your Pants project. If report file isn't in project root, 
+specified report file via `--report_file` e.g.
 
     dep-sanitizer --report_file=/tmp/deps.json unused show 
 
@@ -31,7 +31,7 @@ For getting help
     
 For showing all unused dependencies
 
-    dep-sanitizer unused show 
+    dep-sanitizer --prefix=src/ unused show 
     
 For remove all unused dependencies
 
