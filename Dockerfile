@@ -1,4 +1,4 @@
-# Create a container with statically linked binary (container size ~ 3.7 MB)
+# Create a container with statically linked binary (container size ~ 2 MB)
 
 FROM ekidd/rust-musl-builder:stable AS builder
 

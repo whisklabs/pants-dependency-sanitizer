@@ -41,7 +41,7 @@ impl Address {
 
     pub fn as_str(&self) -> String {
         if self.is_simple() {
-            format!("{}", self.folder)
+            self.folder.to_string()
         } else {
             format!("{}:{}", self.folder, self.module_name)
         }
