@@ -1,6 +1,6 @@
-//! Provides all functionality
+//! Provides functionality to optimizing Pants dependencies.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
 use std::fs;
 use std::fs::File;
