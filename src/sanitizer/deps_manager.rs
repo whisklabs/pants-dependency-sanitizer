@@ -119,14 +119,19 @@ pub fn remove_deps(
 }
 
 /// Finds a BUILD file and inserts lines with undeclared dependencies, returns number of inserted lines.
-pub fn add_deps(module: &Address, deps: Vec<Address>) -> Result<usize, Box<dyn Error>> {
+pub fn add_deps(
+    module: &Address,
+    deps: Vec<Address>,
+    skip_marker: &str,
+) -> Result<usize, Box<dyn Error>> {
     let mut counter = 0;
     for entry in fs::read_dir(&module.folder)? {
         let entry = entry?;
         if entry.file_name() == "BUILD" {
             // read existed, add undeclared and sort
 
-            let updated_deps = add_deps_to_file(entry.path(), &module, deps, &mut counter)?;
+            let updated_deps =
+                add_deps_to_file(entry.path(), &module, deps, &mut counter, skip_marker)?;
 
             // write filtered dependencies back in BUILD file
             let mut file = BufWriter::new(File::create(entry.path())?);
@@ -147,6 +152,7 @@ fn add_deps_to_file(
     module: &Address,
     deps: Vec<Address>,
     counter: &mut isize,
+    skip_marker: &str,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let file = BufReader::new(File::open(file)?);
 
@@ -182,7 +188,7 @@ fn add_deps_to_file(
 
         if inside_module_dep_section {
             // we are into dep block just add new line into deps set
-            if line.ends_with(',') {
+            if line.ends_with(',') || line.contains(skip_marker) {
                 updated_deps.insert(line.replace('"', "'"));
             } else if !line.is_empty() {
                 updated_deps.insert(line.replace('"', "'") + ",");

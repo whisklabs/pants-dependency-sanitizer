@@ -26,7 +26,9 @@ pub fn perform(config: Config) {
         },
         Undeclared { cmd } => match cmd {
             UndeclaredSubCommand::Show => show_undeclared(config.report_file, config.prefix),
-            UndeclaredSubCommand::Fix => fix_undeclared(config.report_file, config.prefix),
+            UndeclaredSubCommand::Fix => {
+                fix_undeclared(config.report_file, config.prefix, &config.skip_marker)
+            }
         },
     }
 }
@@ -64,10 +66,10 @@ fn show_undeclared(report: PathBuf, prefix: String) {
 }
 
 /// Add to corresponded BUILD files all undeclared but used transitively dependencies
-fn fix_undeclared(report: PathBuf, prefix: String) {
+fn fix_undeclared(report: PathBuf, prefix: String, skip_marker: &str) {
     let undeclared = select(report, "undeclared", prefix);
     for (module, deps) in undeclared {
-        let added = add_deps(&module, deps)
+        let added = add_deps(&module, deps, skip_marker)
             .unwrap_or_else(|_| panic!("Couldn't add undeclared deps to the module: {:?}", module));
         println!("{:?} added: {}", module, added)
     }
