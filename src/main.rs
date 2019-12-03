@@ -23,6 +23,10 @@ pub struct Config {
     #[structopt(short, long, default_value = "src/scala/")]
     prefix: String,
 
+    /// If dependency was  annotated with this marker tath it will be skipped to sanitize(removing)
+    #[structopt(short, long, default_value = "#skip-sanitize")]
+    skip_marker: String,
+
     #[structopt(subcommand)]
     cmd: Command,
 }

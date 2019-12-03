@@ -55,7 +55,11 @@ impl Debug for Address {
 }
 
 /// Finds BUILD file and removes lines with unused dependencies, returns number of removed lines.
-pub fn remove_deps(module: &Address, deps: Vec<Address>) -> Result<usize, Box<dyn Error>> {
+pub fn remove_deps(
+    module: &Address,
+    deps: Vec<Address>,
+    skip_marker: &str,
+) -> Result<usize, Box<dyn Error>> {
     let mut counter = 0;
 
     for entry in fs::read_dir(&module.folder)? {
@@ -88,6 +92,7 @@ pub fn remove_deps(module: &Address, deps: Vec<Address>) -> Result<usize, Box<dy
                         }
 
                         if inside_module_dep_section
+                            && !line.contains(skip_marker)
                             && deps.iter().any(|target| target.match_line(&line))
                         {
                             // we are in dependency block of required module

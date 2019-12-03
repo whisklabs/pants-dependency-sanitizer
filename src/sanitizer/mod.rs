@@ -20,7 +20,9 @@ pub fn perform(config: Config) {
     match config.cmd {
         Unused { cmd } => match cmd {
             UnusedSubCommand::Show => show_unused(config.report_file, config.prefix),
-            UnusedSubCommand::Fix => fix_unused(config.report_file, config.prefix),
+            UnusedSubCommand::Fix => {
+                fix_unused(config.report_file, config.prefix, config.skip_marker)
+            }
         },
         Undeclared { cmd } => match cmd {
             UndeclaredSubCommand::Show => show_undeclared(config.report_file, config.prefix),
@@ -41,10 +43,10 @@ fn show_unused(report: PathBuf, prefix: String) {
 }
 
 /// Removes all unused dependencies from all corresponded BUILD files.
-fn fix_unused(report: PathBuf, prefix: String) {
+fn fix_unused(report: PathBuf, prefix: String, skip_marker: String) {
     let unused = select(report, "unused", prefix);
     for (module, deps) in unused {
-        let removed = remove_deps(&module, deps)
+        let removed = remove_deps(&module, deps, &skip_marker)
             .unwrap_or_else(|_| panic!("Couldn't remove unused for module: {:?}", module));
         println!("{:?} removed: {}", module, removed)
     }
