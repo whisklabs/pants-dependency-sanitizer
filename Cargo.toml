@@ -1,6 +1,6 @@
 [package]
-name = "pants-cleaner"
-version = "0.1.0"
+name = "pants-dependency-sanitizer"
+version = "0.2.0"
 authors = ["C.Solovev <constantine.solovev@gmail.com>"]
 edition = "2018"
 
@@ -12,3 +12,10 @@ structopt = "0.2.15"
 serde = "1.0.103"
 serde_derive = "1.0.103"
 serde_json = "1.0.42"
+
+[profile.release]
+lto = true
+
+[[bin]]
+name = "dep-sanitizer"
+path = "src/main.rs"
