@@ -8,10 +8,13 @@ use std::path::PathBuf;
 use serde::de::DeserializeOwned;
 use serde::export::fmt::Debug;
 use serde_json;
+use walkdir::{DirEntry, WalkDir};
 
-use crate::sanitizer::deps_manager::{add_deps, remove_deps, Address};
-use crate::Command::{Undeclared, Unused};
+use crate::sanitizer::deps_manager::{Address, deps_block_start};
+use crate::Command::{Sort, Undeclared, Unused};
 use crate::{Config, UndeclaredSubCommand, UnusedSubCommand};
+use std::env;
+use std::error::Error;
 
 mod deps_manager;
 
@@ -30,6 +33,7 @@ pub fn perform(config: Config) {
                 fix_undeclared(config.report_file, config.prefix, &config.skip_marker)
             }
         },
+        Sort {} => sort_recursively(config.prefix).expect("Cant sort dependencies"),
     }
 }
 
@@ -48,7 +52,7 @@ fn show_unused(report: PathBuf, prefix: String) {
 fn fix_unused(report: PathBuf, prefix: String, skip_marker: String) {
     let unused = select(report, "unused", prefix);
     for (module, deps) in unused {
-        let removed = remove_deps(&module, deps, &skip_marker)
+        let removed = deps_manager::remove_deps(&module, deps, &skip_marker)
             .unwrap_or_else(|_| panic!("Couldn't remove unused for module: {:?}", module));
         println!("{:?} removed: {}", module, removed)
     }
@@ -69,7 +73,7 @@ fn show_undeclared(report: PathBuf, prefix: String) {
 fn fix_undeclared(report: PathBuf, prefix: String, skip_marker: &str) {
     let undeclared = select(report, "undeclared", prefix);
     for (module, deps) in undeclared {
-        let added = add_deps(&module, deps, skip_marker)
+        let added = deps_manager::add_deps(&module, deps, skip_marker)
             .unwrap_or_else(|_| panic!("Couldn't add undeclared deps to the module: {:?}", module));
         println!("{:?} added: {}", module, added)
     }
@@ -108,6 +112,32 @@ fn select(
             }
         })
         .collect()
+}
+
+/** Finds all BUILD files recursively and sort dependencies. */
+fn sort_recursively(prefix: String) -> Result<(), Box<dyn Error>> {
+    let mut current_dir = env::current_dir()?;
+    current_dir.push(prefix);
+
+    WalkDir::new(current_dir).into_iter().for_each(|result| {
+        match result {
+            Ok(entry) if is_build_file(&entry) => {
+                println!("visited {}", entry.path().display());
+                deps_manager::run_for_block(
+                    entry.into_path(),
+                    |line| { deps_manager::deps_block_start(line) || deps_manager::exports_block_start(line) },
+                    deps_manager::block_ends,
+                    |vec| vec,
+                );
+                ()
+            }
+            _ => {
+                // skip any error
+            }
+        }
+    });
+
+    Ok(())
 }
 
 #[derive(Deserialize, Debug)]
@@ -149,4 +179,9 @@ pub fn read_report<T: DeserializeOwned>(report: PathBuf) -> Result<T, String> {
         .map_err(|e| format!("Couldn't open the file {:?}. Cause={}", &report, e))?;
     serde_json::from_reader(BufReader::new(file))
         .map_err(|e| format!("Couldn't parse json file {:?}. Cause = {}", &report, e))
+}
+
+#[inline]
+fn is_build_file(entry: &DirEntry) -> bool {
+    entry.file_type().is_file() && entry.file_name() == "BUILD"
 }

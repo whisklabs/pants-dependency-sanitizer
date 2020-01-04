@@ -45,6 +45,10 @@ pub enum Command {
         #[structopt(subcommand)]
         cmd: UndeclaredSubCommand,
     },
+    /// Finds all BUILD files downstream to the current folder (with --prefix) and sorts dependencies
+    /// in 'dependencies' and 'exports' blocks
+    #[structopt(name = "sort")]
+    Sort {},
 }
 
 #[derive(StructOpt, Debug)]
