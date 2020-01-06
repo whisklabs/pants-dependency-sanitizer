@@ -1,6 +1,6 @@
 //! Provides functionality to optimizing Pants dependencies.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -10,7 +10,7 @@ use serde::export::fmt::Debug;
 use serde_json;
 use walkdir::{DirEntry, WalkDir};
 
-use crate::sanitizer::deps_manager::{Address, deps_block_start};
+use crate::sanitizer::deps_manager::Address;
 use crate::Command::{Sort, Undeclared, Unused};
 use crate::{Config, UndeclaredSubCommand, UnusedSubCommand};
 use std::env;
@@ -33,7 +33,9 @@ pub fn perform(config: Config) {
                 fix_undeclared(config.report_file, config.prefix, &config.skip_marker)
             }
         },
-        Sort {} => sort_recursively(config.prefix).expect("Cant sort dependencies"),
+        Sort {} => {
+            sort_recursively(config.prefix, &config.skip_marker).expect("Cant sort dependencies")
+        }
     }
 }
 
@@ -115,21 +117,25 @@ fn select(
 }
 
 /** Finds all BUILD files recursively and sort dependencies. */
-fn sort_recursively(prefix: String) -> Result<(), Box<dyn Error>> {
+fn sort_recursively(prefix: String, skip_marker: &str) -> Result<(), Box<dyn Error>> {
     let mut current_dir = env::current_dir()?;
     current_dir.push(prefix);
 
     WalkDir::new(current_dir).into_iter().for_each(|result| {
         match result {
             Ok(entry) if is_build_file(&entry) => {
-                println!("visited {}", entry.path().display());
+                println!("sorted {}", entry.path().display());
                 deps_manager::run_for_block(
-                    entry.into_path(),
-                    |line| { deps_manager::deps_block_start(line) || deps_manager::exports_block_start(line) },
+                    entry.clone().into_path(),
+                    |line| {
+                        deps_manager::deps_block_start(line)
+                            || deps_manager::exports_block_start(line)
+                    },
                     deps_manager::block_ends,
-                    |vec| vec,
-                );
-                ()
+                    |set: BTreeSet<String>| set,
+                    skip_marker,
+                )
+                .expect(&format!("Cant sort {:?}", entry));
             }
             _ => {
                 // skip any error
