@@ -8,6 +8,6 @@ RUN cargo build --release
 
 FROM scratch
 
-COPY --from=builder /home/rust/src/target/x86_64-unknown-linux-musl/release/pants-cleaner /app
+COPY --from=builder /home/rust/src/target/x86_64-unknown-linux-musl/release/dep-sanitizer /app
 WORKDIR /project
 ENTRYPOINT ["/app"]
