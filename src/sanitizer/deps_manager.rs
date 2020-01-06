@@ -12,7 +12,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::string::ToString;
 
-/// Representation fof Pants address.
+/// Representation for Pants address.
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Address {
     pub folder: String,
@@ -57,68 +57,41 @@ impl Debug for Address {
 }
 
 /// Finds BUILD file and removes lines with unused dependencies, returns number of removed lines.
-// todo refactor, use 'run_for_block'
 pub fn remove_deps(
     module: &Address,
-    deps: Vec<Address>,
+    deps: &Vec<Address>,
     skip_marker: &str,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let mut counter = 0;
 
     for entry in fs::read_dir(&module.folder)? {
         let entry = entry?;
         if entry.file_name() == "BUILD" {
-            // read and filter unused dependencies
-            let cleaned = {
-                let file = BufReader::new(File::open(entry.path())?);
-
-                let mut inside_module_section = module.is_simple();
-                let mut inside_module_dep_section = false;
-
-                file.lines()
-                    .filter_map(|line| {
-                        let line = line.unwrap_or_else(|_| {
-                            panic!("Couldn't read line from {}/BUILD ", module.folder)
-                        });
-
-                        if line.contains("name=") && line.contains(&module.module_name) {
-                            inside_module_section = true;
-                        }
-
-                        if inside_module_section && line.contains("dependencies") {
-                            inside_module_dep_section = true;
-                        }
-
-                        if inside_module_dep_section && line.contains(']') {
-                            inside_module_dep_section = false;
-                            inside_module_section = false; // actually no, but it's ok so simplifying
-                        }
-
-                        if inside_module_dep_section
-                            && !line.contains(skip_marker)
-                            && deps.iter().any(|target| target.match_line(&line))
-                        {
-                            // we are in dependency block of required module
-                            // if line contents unused dep remove it from result
-                            counter += 1;
-                            None
-                        } else {
-                            Some(line)
-                        }
-                    })
-                    .collect::<Vec<String>>()
-            };
-
-            // write filtered dependencies back in BUILD file
-            let mut file = BufWriter::new(File::create(entry.path())?);
-            for line in cleaned {
-                writeln!(file, "{}", line)?;
-            }
-            file.flush()?;
-            break;
+            let mut inside_module_section = module.is_simple();
+            counter += run_for_block(
+                entry.path(),
+                |line| {
+                    if line.contains("name=") && line.contains(&module.module_name) {
+                        inside_module_section = true;
+                    }
+                    inside_module_section && deps_manager::deps_block_start(line)
+                },
+                deps_manager::block_ends,
+                |lines| {
+                    lines
+                        .into_iter()
+                        .filter(|line| {
+                            line.contains(skip_marker)
+                                || !deps.iter().any(|target| target.match_line(&line))
+                        })
+                        .collect()
+                },
+                skip_marker,
+            )
+            .unwrap();
         }
     }
-    Ok(counter)
+    Ok(counter.abs())
 }
 
 /// Finds a BUILD file and inserts lines with undeclared dependencies, returns number of inserted lines.
@@ -159,7 +132,7 @@ pub fn add_deps(
                 },
                 skip_marker,
             )
-                .unwrap();
+            .unwrap();
         }
     }
     Ok(counter)

@@ -54,7 +54,7 @@ fn show_unused(report: PathBuf, prefix: String) {
 fn fix_unused(report: PathBuf, prefix: String, skip_marker: String) {
     let unused = select(report, "unused", prefix);
     for (module, deps) in unused {
-        let removed = deps_manager::remove_deps(&module, deps, &skip_marker)
+        let removed = deps_manager::remove_deps(&module, &deps, &skip_marker)
             .unwrap_or_else(|_| panic!("Couldn't remove unused for module: {:?}", module));
         println!("{:?} removed: {}", module, removed)
     }
