@@ -15,7 +15,7 @@ Binary (cargo required - [how to install rust](https://www.rust-lang.org/tools/i
     
 Docker (docker required)(may take a few minutes)
 
-    docker build -t dep-sanitizer.
+    docker build -t dep-sanitizer .
     
     
 ## How to use

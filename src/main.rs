@@ -23,7 +23,7 @@ pub struct Config {
     #[structopt(short, long, default_value = "src/scala/")]
     prefix: String,
 
-    /// If dependency was  annotated with this marker tath it will be skipped to sanitize(removing)
+    /// If dependency was annotated with this marker it will be skipped to sanitize(removing)
     #[structopt(short, long, default_value = "#skip-sanitize")]
     skip_marker: String,
 
@@ -45,6 +45,10 @@ pub enum Command {
         #[structopt(subcommand)]
         cmd: UndeclaredSubCommand,
     },
+    /// Finds all BUILD files downstream to the current folder (with --prefix) and sorts dependencies
+    /// in 'dependencies' and 'exports' blocks, adds trailing comma and replace " to ' as well
+    #[structopt(name = "sort")]
+    Sort {},
 }
 
 #[derive(StructOpt, Debug)]

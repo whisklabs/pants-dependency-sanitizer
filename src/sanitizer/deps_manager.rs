@@ -1,5 +1,7 @@
 //! This module provides functionality for read from and write to Pants BUILD file.
 
+use crate::sanitizer::deps_manager;
+use regex::Regex;
 use std::collections::BTreeSet;
 use std::error::Error;
 use std::fmt;
@@ -10,7 +12,7 @@ use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::string::ToString;
 
-/// Representation fof Pants address.
+/// Representation for Pants address.
 #[derive(Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct Address {
     pub folder: String,
@@ -35,8 +37,8 @@ impl Address {
     /// Line corresponds to this address.
     pub fn match_line(&self, line: &str) -> bool {
         line.contains(&format!("'{}:{}'", self.folder, self.module_name))       // full address
-        || (self.is_simple() && line.contains(&format!("'{}'", &self.folder)))  // only folder
-        || line.contains(&format!("':{}'", self.module_name)) // only module name
+            || (self.is_simple() && line.contains(&format!("'{}'", &self.folder)))  // only folder
+            || line.contains(&format!("':{}'", self.module_name)) // only module name
     }
 
     pub fn as_str(&self) -> String {
@@ -57,65 +59,39 @@ impl Debug for Address {
 /// Finds BUILD file and removes lines with unused dependencies, returns number of removed lines.
 pub fn remove_deps(
     module: &Address,
-    deps: Vec<Address>,
+    deps: &Vec<Address>,
     skip_marker: &str,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let mut counter = 0;
 
     for entry in fs::read_dir(&module.folder)? {
         let entry = entry?;
         if entry.file_name() == "BUILD" {
-            // read and filter unused dependencies
-            let cleaned = {
-                let file = BufReader::new(File::open(entry.path())?);
-
-                let mut inside_module_section = module.is_simple();
-                let mut inside_module_dep_section = false;
-
-                file.lines()
-                    .filter_map(|line| {
-                        let line = line.unwrap_or_else(|_| {
-                            panic!("Couldn't read line from {}/BUILD ", module.folder)
-                        });
-
-                        if line.contains("name=") && line.contains(&module.module_name) {
-                            inside_module_section = true;
-                        }
-
-                        if inside_module_section && line.contains("dependencies") {
-                            inside_module_dep_section = true;
-                        }
-
-                        if inside_module_dep_section && line.contains(']') {
-                            inside_module_dep_section = false;
-                            inside_module_section = false; // actually no, but it's ok so simplifying
-                        }
-
-                        if inside_module_dep_section
-                            && !line.contains(skip_marker)
-                            && deps.iter().any(|target| target.match_line(&line))
-                        {
-                            // we are in dependency block of required module
-                            // if line contents unused dep remove it from result
-                            counter += 1;
-                            None
-                        } else {
-                            Some(line)
-                        }
-                    })
-                    .collect::<Vec<String>>()
-            };
-
-            // write filtered dependencies back in BUILD file
-            let mut file = BufWriter::new(File::create(entry.path())?);
-            for line in cleaned {
-                writeln!(file, "{}", line)?;
-            }
-            file.flush()?;
-            break;
+            let mut inside_module_section = module.is_simple();
+            counter += run_for_block(
+                entry.path(),
+                |line| {
+                    if line.contains("name=") && line.contains(&module.module_name) {
+                        inside_module_section = true;
+                    }
+                    inside_module_section && deps_manager::deps_block_start(line)
+                },
+                deps_manager::block_ends,
+                |lines| {
+                    lines
+                        .into_iter()
+                        .filter(|line| {
+                            line.contains(skip_marker)
+                                || !deps.iter().any(|target| target.match_line(&line))
+                        })
+                        .collect()
+                },
+                skip_marker,
+            )
+            .unwrap();
         }
     }
-    Ok(counter)
+    Ok(counter.abs())
 }
 
 /// Finds a BUILD file and inserts lines with undeclared dependencies, returns number of inserted lines.
@@ -123,87 +99,179 @@ pub fn add_deps(
     module: &Address,
     deps: Vec<Address>,
     skip_marker: &str,
-) -> Result<usize, Box<dyn Error>> {
+) -> Result<i32, Box<dyn Error>> {
     let mut counter = 0;
+
     for entry in fs::read_dir(&module.folder)? {
         let entry = entry?;
+
         if entry.file_name() == "BUILD" {
-            // read existed, add undeclared and sort
+            // add undeclared and sort
 
-            let updated_deps =
-                add_deps_to_file(entry.path(), &module, deps, &mut counter, skip_marker)?;
+            let mut inside_module_section = module.is_simple();
 
-            // write filtered dependencies back in BUILD file
-            let mut file = BufWriter::new(File::create(entry.path())?);
-            for line in updated_deps {
-                writeln!(file, "{}", line)?;
-            }
-            file.flush()?;
-            break;
-        } else {
+            counter += run_for_block(
+                entry.path(),
+                |line: &str| {
+                    if line.contains("name=") && line.contains(&module.module_name) {
+                        inside_module_section = true;
+                    }
+
+                    inside_module_section && deps_manager::deps_block_start(line)
+                },
+                deps_manager::block_ends,
+                |mut file_deps: BTreeSet<String>| {
+                    // add undeclared deps to deps from file
+                    let deps_iter = deps
+                        .clone()
+                        .into_iter()
+                        .map(|dep| format!("        '{}',", dep.as_str()));
+
+                    file_deps.extend(deps_iter);
+                    file_deps
+                },
+                skip_marker,
+            )
+            .unwrap();
         }
     }
-    Ok(counter as usize)
+    Ok(counter)
 }
 
-/// Adds new deps to dependency block of the BUILD file.
-fn add_deps_to_file(
-    file: PathBuf,
-    module: &Address,
-    deps: Vec<Address>,
-    counter: &mut isize,
+/// Finds block in the specified BUILD file and executes `block_fn` for each founded blocks.
+///
+/// # Arguments
+///
+/// * `build_file` - path to BUILD file
+/// * `block_start_fn` - marks that some block is started
+/// * `block_end_fn` - marks that some block is ended
+/// * `block_fn` - some action that will be executed when block is ended for each lines of this block
+/// * `skip_marker` - marker that prevent removing dependencies
+///
+pub fn run_for_block<F1: FnMut(&str) -> bool, F2: FnMut(BTreeSet<String>) -> BTreeSet<String>>(
+    build_file: PathBuf,
+    mut block_start_fn: F1,
+    block_end_fn: fn(&str) -> bool,
+    mut block_fn: F2,
     skip_marker: &str,
-) -> Result<Vec<String>, Box<dyn Error>> {
-    let file = BufReader::new(File::open(file)?);
+) -> Result<i32, Box<dyn Error>> {
+    let file = BufReader::new(File::open(&build_file)?);
 
-    let deps_iter = deps
-        .into_iter()
-        .map(|dep| format!("        '{}',", dep.as_str()));
+    let mut line_buffer: BTreeSet<String> = BTreeSet::new();
+    let mut inside_block = false;
+    let mut line_edited: i32 = 0;
 
-    let mut result: Vec<String> = Vec::new();
-    // we use BTreeSet because deps should be sorted and unique
-    let mut updated_deps = BTreeSet::new();
-    let mut inside_module_section = module.is_simple();
-    let mut inside_module_dep_section = false;
+    let lines: Vec<String> = file
+        .lines()
+        .filter_map(|line| {
+            match line {
+                Ok(line) if !inside_block && block_start_fn(&line) => {
+                    assert!(
+                        line_buffer.is_empty(),
+                        "Buffer should be empty, inner blocks isn't supported"
+                    );
+                    inside_block = true;
+                    Some(vec![line])
+                }
+                Ok(line) if inside_block && block_end_fn(&line) => {
+                    // reached block end, runs `block_fn`
+                    let mut result = block_fn(line_buffer.clone());
+                    line_edited = result.len() as i32 - line_buffer.len() as i32;
+                    line_buffer.clear();
+                    result.insert(line);
+                    inside_block = false;
+                    Some(result.into_iter().collect())
+                }
+                Ok(line) if inside_block => {
+                    // inside a block, accumulate lines into buffer
+                    if line.ends_with(',') || line.contains(skip_marker) {
+                        line_buffer.insert(line.replace('"', "'"));
+                    } else if !line.is_empty() {
+                        line_buffer.insert(line.replace('"', "'") + ",");
+                    };
+                    None
+                }
+                Ok(line) => {
+                    // other lines just ignore
+                    Some(vec![line])
+                }
+                Err(err) => {
+                    println!("Error reading BUILD file {:?}: {:?}", build_file, err);
+                    None
+                }
+            }
+        })
+        .flatten()
+        .collect();
 
-    for line in file.lines() {
-        let line = line?;
+    // write filtered dependencies back in BUILD file
+    let mut file = BufWriter::new(File::create(&build_file)?);
+    for line in lines {
+        writeln!(file, "{}", line)?;
+    }
+    file.flush()?;
 
-        if line.contains("name=") && line.contains(&module.module_name) {
-            inside_module_section = true;
-        }
+    Ok(line_edited)
+}
 
-        if line.contains(']') && inside_module_dep_section {
-            // add undeclared to deps
-            let before = updated_deps.len() as isize;
-            updated_deps.extend(deps_iter.clone());
-            *counter += updated_deps.len() as isize - before;
-            // add deps to file
-            result.extend(updated_deps.clone());
-            result.push(line);
-            inside_module_dep_section = false;
-            inside_module_section = false; // actually no, but it's ok so simplifying
-            continue;
-        }
+const DEPS_START: &str = r"dependencies[\s]*=[\s]*\[";
 
-        if inside_module_dep_section {
-            // we are into dep block just add new line into deps set
-            if line.ends_with(',') || line.contains(skip_marker) {
-                updated_deps.insert(line.replace('"', "'"));
-            } else if !line.is_empty() {
-                updated_deps.insert(line.replace('"', "'") + ",");
-            };
-            continue;
-        }
+const EXPORTS_START: &str = r"exports[\s]*=[\s]*\[";
 
-        if inside_module_section && line.contains("dependencies") {
-            inside_module_dep_section = true;
-            result.push(line);
-            continue;
-        }
+#[inline]
+pub fn deps_block_start(line: &str) -> bool {
+    Regex::new(DEPS_START).unwrap().is_match(line)
+}
 
-        result.push(line);
+#[inline]
+pub fn exports_block_start(line: &str) -> bool {
+    Regex::new(EXPORTS_START).unwrap().is_match(line)
+}
+
+#[inline]
+pub fn block_ends(line: &str) -> bool {
+    line.contains("]")
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sanitizer::deps_manager::{block_ends, deps_block_start, exports_block_start};
+
+    #[test]
+    fn deps_block_start_test() {
+        assert!(!deps_block_start(""));
+        assert!(!deps_block_start("dependencies"));
+        assert!(!deps_block_start("deps"));
+
+        assert!(!deps_block_start("dependencies="));
+        assert!(!deps_block_start("dependencies["));
+
+        assert!(deps_block_start("dependencies=["));
+        assert!(deps_block_start("dependencies= ["));
+        assert!(deps_block_start("  dependencies = ["));
     }
 
-    Ok(result)
+    #[test]
+    fn exports_block_start_test() {
+        assert!(!exports_block_start(""));
+        assert!(!exports_block_start("exports"));
+
+        assert!(!exports_block_start("exports="));
+        assert!(!exports_block_start("exports["));
+
+        assert!(exports_block_start("exports=["));
+        assert!(exports_block_start("exports= ["));
+        assert!(exports_block_start("  exports = ["));
+    }
+
+    #[test]
+    fn block_ends_test() {
+        assert!(!block_ends(""));
+        assert!(!block_ends("deps"));
+
+        assert!(block_ends("]"));
+        assert!(block_ends(" ]"));
+        assert!(block_ends("] "));
+        assert!(block_ends(" ] "));
+    }
 }
