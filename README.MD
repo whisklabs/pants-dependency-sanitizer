@@ -25,25 +25,30 @@ specify report file via `--report_file` e.g.
 
     dep-sanitizer --report_file=/tmp/deps.json unused show 
 
-For getting help
+To get help
 
     dep-sanitizer help    
     
-For showing all unused dependencies
+To show all unused dependencies
 
     dep-sanitizer --prefix=src/ unused show 
     
-For remove all unused dependencies
+To remove all unused dependencies
 
     dep-sanitizer unused fix
     
-For showing all undeclared but used transitively modules dependencies
+To show all undeclared but transitively used modules dependencies
 
     dep-sanitizer undeclared show 
     
-For adding all undeclared dependencies to corresponded BUILD files
+To add all undeclared dependencies to corresponded BUILD files
 
     dep-sanitizer undeclared fix
+    
+To sort dependencies in `dependencies` and `export` blocks,
+replace `"` to `'`, and add trailing commas
+    
+    dep-sanitizer --prefix=src/ sort
     
 Use with docker 
 
