@@ -74,14 +74,15 @@ pub fn remove_deps(
                     if line.contains("name=") && line.contains(&module.module_name) {
                         inside_module_section = true;
                     }
-                    inside_module_section && deps_manager::deps_block_start(line)
+                    inside_module_section && (deps_manager::deps_block_start(line) || deps_manager::exports_block_start(line))
                 },
                 deps_manager::block_ends,
                 |lines| {
                     lines
                         .into_iter()
                         .filter(|line| {
-                            line.contains(skip_marker)
+                            line.contains(skip_marker) // don't remove lines with special marker
+                                || is_tested_deps(module, line) // don't remove the same module in tests
                                 || !deps.iter().any(|target| target.match_line(&line))
                         })
                         .collect()
@@ -92,6 +93,11 @@ pub fn remove_deps(
         }
     }
     Ok(counter.abs())
+}
+
+/// Dirty hack to keep the main tested dependency into the test module
+fn is_tested_deps(module: &Address, line: &String) -> bool {
+    module.folder.strip_prefix("tests/").map_or(false, |suffix| line.contains(suffix))
 }
 
 /// Finds a BUILD file and inserts lines with undeclared dependencies, returns number of inserted lines.
@@ -186,7 +192,7 @@ pub fn run_for_block<F1: FnMut(&str) -> bool, F2: FnMut(BTreeSet<String>) -> BTr
                     // inside a block, accumulate lines into buffer
                     if line.ends_with(',') || line.contains(skip_marker) {
                         line_buffer.insert(line.replace('"', "'"));
-                    } else if !line.is_empty() {
+                    } else if !line.trim().is_empty() {
                         line_buffer.insert(line.replace('"', "'") + ",");
                     };
                     None
@@ -220,12 +226,12 @@ const EXPORTS_START: &str = r"exports[\s]*=[\s]*\[";
 
 #[inline]
 pub fn deps_block_start(line: &str) -> bool {
-    Regex::new(DEPS_START).unwrap().is_match(line)
+    Regex::new(DEPS_START).unwrap().is_match(line) && !block_ends(line)
 }
 
 #[inline]
 pub fn exports_block_start(line: &str) -> bool {
-    Regex::new(EXPORTS_START).unwrap().is_match(line)
+    Regex::new(EXPORTS_START).unwrap().is_match(line) && !block_ends(line)
 }
 
 #[inline]

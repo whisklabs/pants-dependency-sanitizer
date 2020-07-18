@@ -37,11 +37,11 @@ To remove all unused dependencies
 
     dep-sanitizer unused fix
     
-To show all undeclared but transitively used modules dependencies
+To show all undeclared but transitively used modules dependencies (**doesn't make sense if 'exports' block used**)
 
     dep-sanitizer undeclared show 
     
-To add all undeclared dependencies to corresponded BUILD files
+To add all undeclared dependencies to corresponded BUILD files (**doesn't make sense if 'exports' block used**)
 
     dep-sanitizer undeclared fix
     
