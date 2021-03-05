@@ -21,9 +21,9 @@ Docker (docker required)(may take a few minutes)
 ## How to use
 
 Run this tool from the root of your Pants project. If the report file isn't in the project root, 
-specify report file via `--report_file` e.g.
+specify report file via `--report-file` e.g.
 
-    dep-sanitizer --report_file=/tmp/deps.json unused show 
+    dep-sanitizer --report-file=/tmp/deps.json unused show 
 
 To get help
 

@@ -6,7 +6,6 @@ use std::io::BufReader;
 use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
-use serde::export::fmt::Debug;
 use serde_json;
 use walkdir::{DirEntry, WalkDir};
 
