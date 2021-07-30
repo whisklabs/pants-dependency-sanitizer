@@ -1,6 +1,6 @@
 [package]
 name = "pants-dependency-sanitizer"
-version = "0.2.0"
+version = "0.2.2"
 authors = ["C.Solovev <constantine.solovev@gmail.com>"]
 edition = "2018"
 
